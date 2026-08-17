@@ -146,14 +146,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Distribution mirrors drop connections often enough that an unretried
+      # install is the most likely reason for this job to fail spuriously.
       - name: Install build dependencies
         run: |
-          dnf install -y \
-            rpm-build rpmdevtools meson ninja-build \
-            python3-devel python3-gobject \
-            gtk4-devel libadwaita-devel \
-            desktop-file-utils libappstream-glib appstream \
-            xorg-x11-server-Xvfb squashfs-tools
+          for attempt in 1 2 3; do
+            dnf install -y --setopt=retries=5 --setopt=timeout=60 \
+              rpm-build rpmdevtools meson ninja-build \
+              python3-devel python3-gobject \
+              gtk4-devel libadwaita-devel \
+              desktop-file-utils libappstream-glib appstream \
+              xorg-x11-server-Xvfb squashfs-tools && exit 0
+            echo "dnf attempt ${attempt} failed; retrying"
+            sleep 20
+          done
+          echo "::error::could not install the build dependencies"
+          exit 1
 
       # Every package is built from the tarball the version job produced,
       # so the .deb, .rpm and Arch package cannot disagree about their
@@ -214,11 +222,20 @@ jobs:
     container:
       image: archlinux:base-devel
     steps:
+      # See the note in the rpm job: mirror failures are the main source of
+      # spurious failures here.
       - name: Install build dependencies
         run: |
-          pacman -Syu --noconfirm --needed \
-            meson ninja python python-gobject gtk4 libadwaita \
-            desktop-file-utils appstream xorg-server-xvfb squashfs-tools
+          for attempt in 1 2 3; do
+            pacman -Syu --noconfirm --needed --disable-download-timeout \
+              meson ninja python python-gobject gtk4 libadwaita \
+              desktop-file-utils appstream xorg-server-xvfb squashfs-tools && exit 0
+            echo "pacman attempt ${attempt} failed; refreshing and retrying"
+            pacman -Syy --noconfirm || true
+            sleep 20
+          done
+          echo "::error::could not install the build dependencies"
+          exit 1
 
       - uses: actions/checkout@v7
 
