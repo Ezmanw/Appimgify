@@ -17,7 +17,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 from appimgify.persistence.config import SettingsStore
 from appimgify.persistence.library import Library
@@ -27,9 +27,18 @@ from appimgify.ui.app_row import escape_markup
 
 
 def display_available() -> bool:
-    """True when a display is present, so widgets can actually be built."""
+    """True when widgets can actually be built.
+
+    A successful ``Gtk.init_check()`` is not enough on its own: on a headless
+    build machine it can return true while leaving no default ``GdkDisplay``,
+    and constructing a widget then segfaults inside the icon theme rather than
+    raising something catchable. Distribution builders run the test suite in
+    exactly that environment, so the guard checks for the display itself.
+    """
     try:
-        return bool(Gtk.init_check())
+        if not Gtk.init_check():
+            return False
+        return Gdk.Display.get_default() is not None
     except Exception:
         return False
 

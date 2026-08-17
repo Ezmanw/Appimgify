@@ -47,8 +47,15 @@ privileges are required.
 %meson_install
 
 %check
-# The widget tests need a display; the rest of the suite runs anywhere.
-%meson_test
+# The widget tests skip themselves without a display, so the suite runs with
+# or without Xvfb. Running without a session bus keeps GTK from trying to
+# autostart xdg-desktop-portal and blocking on it.
+export DBUS_SESSION_BUS_ADDRESS='disabled:'
+if command -v xvfb-run >/dev/null 2>&1; then
+    xvfb-run -a %meson_test
+else
+    %meson_test
+fi
 
 %files
 %license LICENSE
