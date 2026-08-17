@@ -1,5 +1,7 @@
 # Appimgify
 
+[![Build](https://github.com/Ezmanw/Appimgify/actions/workflows/build.yml/badge.svg)](https://github.com/Ezmanw/Appimgify/actions/workflows/build.yml)
+
 A native GTK 4 / Libadwaita AppImage manager for the Linux desktop.
 
 Appimgify turns a downloaded AppImage into a properly integrated desktop

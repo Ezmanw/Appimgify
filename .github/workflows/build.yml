@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install build and runtime dependencies
         run: |
@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: meson-logs-${{ strategy.job-index }}
           path: build/meson-logs/
