@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ezmanw.Appimgify</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Appimgify</name>
+  <summary>Manage AppImages and their launchers</summary>
+
+  <description>
+    <p>
+      Appimgify turns a downloaded AppImage into a properly integrated desktop
+      application. It copies the file into a managed folder, makes it
+      executable, reads the name, description and icon out of the bundle where
+      it can, and writes a desktop entry so the application shows up in the
+      normal applications menu.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Import AppImages with a file chooser or by dropping them on the window</li>
+      <li>Read application details and icons out of the AppImage automatically</li>
+      <li>Edit the name, description, icon, categories and launch options</li>
+      <li>Replace an AppImage with a newer version without losing its settings</li>
+      <li>Save reusable launcher presets</li>
+      <li>Remove the AppImage, its launcher, or both</li>
+    </ul>
+    <p>
+      Everything happens inside your home directory. No administrator
+      privileges are needed at any point.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.ezmanw.Appimgify.desktop</launchable>
+
+  <url type="homepage">https://github.com/Ezmanw/Appimgify</url>
+  <url type="bugtracker">https://github.com/Ezmanw/Appimgify/issues</url>
+
+  <developer id="io.github.ezmanw">
+    <name>The Appimgify Contributors</name>
+  </developer>
+
+  <categories>
+    <category>System</category>
+    <category>Settings</category>
+  </categories>
+
+  <keywords>
+    <keyword>AppImage</keyword>
+    <keyword>Launcher</keyword>
+    <keyword>Install</keyword>
+  </keywords>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.0.0" date="2026-08-17">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

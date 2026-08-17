@@ -1,0 +1,130 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.extraction }})
+    # libadwaita 1.5 and GTK 4.14 are only packaged from 24.04 onwards.
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Metadata extraction has two independent code paths. Running both
+        # keeps the unsquashfs-free fallback from rotting unnoticed.
+        include:
+          - extraction: with squashfs-tools
+            install_squashfs: true
+          - extraction: without squashfs-tools
+            install_squashfs: false
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install build and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            python3 \
+            python3-gi \
+            python3-gi-cairo \
+            gir1.2-gtk-4.0 \
+            gir1.2-adw-1 \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            meson \
+            ninja-build \
+            desktop-file-utils \
+            appstream \
+            xvfb
+
+      - name: Install squashfs-tools
+        if: matrix.install_squashfs
+        run: sudo apt-get install --no-install-recommends -y squashfs-tools
+
+      - name: Confirm squashfs-tools is absent
+        if: ${{ !matrix.install_squashfs }}
+        run: |
+          sudo apt-get remove -y squashfs-tools || true
+          ! command -v unsquashfs
+
+      - name: Report toolchain versions
+        run: |
+          python3 --version
+          meson --version
+          pkg-config --modversion gtk4 libadwaita-1
+
+      - name: Configure
+        run: meson setup build --prefix="${GITHUB_WORKSPACE}/build/install"
+
+      - name: Compile
+        run: meson compile -C build
+
+      # The widget tests skip themselves without a display, which would
+      # silently lose coverage, so Xvfb provides one. D-Bus is explicitly
+      # disabled rather than left unset: on a bare session bus GTK and
+      # libadwaita try to autostart xdg-desktop-portal and hang waiting for it.
+      - name: Test
+        env:
+          DBUS_SESSION_BUS_ADDRESS: 'disabled:'
+        run: xvfb-run -a meson test -C build --print-errorlogs
+
+      - name: Verify the UI tests actually ran
+        run: grep -q "test_the_main_window_builds .* ok" build/meson-logs/testlog.txt
+
+      - name: Install
+        run: meson install -C build
+
+      - name: Smoke-test the installed application
+        env:
+          DBUS_SESSION_BUS_ADDRESS: 'disabled:'
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}/build/install/lib/python3/dist-packages"
+          export XDG_CONFIG_HOME="${RUNNER_TEMP}/config"
+          export XDG_DATA_HOME="${RUNNER_TEMP}/data"
+          mkdir -p "${XDG_CONFIG_HOME}" "${XDG_DATA_HOME}"
+          # The application has no --version flag; starting it and confirming
+          # it stays up for a few seconds is the real check.
+          xvfb-run -a timeout 10 \
+            "${GITHUB_WORKSPACE}/build/install/bin/appimgify" > launch.log 2>&1 \
+            && exit_code=0 || exit_code=$?
+          cat launch.log
+          if [ "${exit_code}" -ne 124 ]; then
+            echo "::error::appimgify exited early (status ${exit_code})"
+            exit 1
+          fi
+          # Running without a session bus makes GTK and dconf complain about
+          # the bus itself. That noise is expected here; anything else on
+          # stderr is a real problem in the application.
+          grep -v -e 'Unable to acquire session bus' \
+                  -e 'Error creating proxy' \
+                  -e 'failed to commit changes to dconf' \
+                  -e '^[[:space:]]*$' launch.log > unexpected.log || true
+          if [ -s unexpected.log ]; then
+            echo "::error::appimgify produced unexpected warnings on startup"
+            cat unexpected.log
+            exit 1
+          fi
+          echo "Application started cleanly and stayed running."
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meson-logs-${{ strategy.job-index }}
+          path: build/meson-logs/
+          retention-days: 7

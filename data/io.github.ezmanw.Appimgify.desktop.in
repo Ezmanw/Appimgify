@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Appimgify
+GenericName=AppImage Manager
+Comment=Import AppImages and add them to your applications menu
+Exec=appimgify %f
+Icon=system-software-install
+Terminal=false
+Categories=System;Settings;PackageManager;GTK;
+Keywords=AppImage;Install;Launcher;Application;Package;
+StartupNotify=true
+MimeType=application/vnd.appimage;application/x-iso9660-appimage;
+X-GNOME-UsesNotifications=false

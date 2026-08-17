@@ -1,0 +1,21 @@
+#!@PYTHON@
+"""Launcher script for Appimgify, installed into ``bindir``."""
+
+import signal
+import sys
+
+sys.path.insert(1, "@PYTHON_DIR@")
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
+gi.require_version("Adw", "1")
+
+from appimgify.application import main  # noqa: E402  (must follow gi.require_version)
+
+if __name__ == "__main__":
+    # Ctrl+C in a terminal should quit the application rather than raise
+    # inside the GTK main loop.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    sys.exit(main(sys.argv))
