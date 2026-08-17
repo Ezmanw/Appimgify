@@ -1,6 +1,7 @@
 # Appimgify
 
 [![Build](https://github.com/Ezmanw/Appimgify/actions/workflows/build.yml/badge.svg)](https://github.com/Ezmanw/Appimgify/actions/workflows/build.yml)
+[![Package](https://github.com/Ezmanw/Appimgify/actions/workflows/package.yml/badge.svg)](https://github.com/Ezmanw/Appimgify/actions/workflows/package.yml)
 
 A native GTK 4 / Libadwaita AppImage manager for the Linux desktop.
 
@@ -82,6 +83,39 @@ Honest caveats:
 ---
 
 ## Installation
+
+### From a release
+
+Prebuilt packages are attached to every [release](https://github.com/Ezmanw/Appimgify/releases).
+They are architecture-independent and take their GTK 4 and Libadwaita bindings
+from your distribution.
+
+**Debian, Ubuntu, Pop!\_OS**
+
+```bash
+sudo apt install ./appimgify_1.0.0_all.deb
+```
+
+**Fedora**
+
+```bash
+sudo dnf install ./appimgify-1.0.0-1.fc41.noarch.rpm
+```
+
+**Arch Linux**
+
+```bash
+sudo pacman -U ./appimgify-1.0.0-1-any.pkg.tar.zst
+```
+
+Each release ships a `SHA256SUMS` file:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+Every package is installed and imported inside CI before it is published, so a
+package that lands in the wrong path fails the build rather than your machine.
 
 ### Dependencies
 
@@ -324,6 +358,22 @@ meson compile -C build
 DESTDIR=/path/to/staging meson install -C build
 ```
 
+### Packaging
+
+Packages build on every push, and a `v*` tag additionally publishes them to a
+GitHub Release. The tag must match the version in `meson.build` or the workflow
+stops before building anything.
+
+To build a `.deb` locally:
+
+```bash
+packaging/build-deb.sh 1.0.0 dist
+```
+
+The `.rpm` and Arch package are built from `packaging/appimgify.spec.in` and
+`packaging/PKGBUILD.in` in Fedora and Arch containers; see
+`.github/workflows/package.yml`.
+
 ### Tests
 
 ```bash
@@ -341,7 +391,8 @@ import behaviour, duplicate handling, replacement, removal, desktop-entry
 generation and escaping, persistence, and recovery from corrupted
 configuration. Generated launchers are additionally checked with
 `desktop-file-validate` when it is installed. Widget tests skip automatically
-when no display is available.
+when no display is available — the suite skips them rather than failing, which
+is what a distribution builder will hit.
 
 ### Project layout
 
