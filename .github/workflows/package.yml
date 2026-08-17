@@ -149,23 +149,31 @@ jobs:
       - name: Install build dependencies
         run: |
           dnf install -y \
-            rpm-build rpmdevtools meson ninja-build git \
+            rpm-build rpmdevtools meson ninja-build \
             python3-devel python3-gobject \
             gtk4-devel libadwaita-devel \
             desktop-file-utils libappstream-glib appstream \
             xorg-x11-server-Xvfb squashfs-tools
 
+      # Every package is built from the tarball the version job produced,
+      # so the .deb, .rpm and Arch package cannot disagree about their
+      # contents. It also means these container jobs need no git at all:
+      # without it installed before checkout, actions/checkout falls back to
+      # an API tarball and leaves no repository behind.
+      - name: Download the source tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: source-tarball
+          path: sources
+
       - name: Prepare the spec and sources
         run: |
           version="${{ needs.version.outputs.version }}"
           rpmdev-setuptree
-          sed "s/@VERSION@/${version}/g" packaging/appimgify.spec.in > appimgify.spec
-          # git refuses to archive a tree it considers owned by someone else.
-          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-          git archive --format=tar.gz \
-            --prefix="appimgify-${version}/" \
-            -o ~/rpmbuild/SOURCES/"appimgify-${version}.tar.gz" HEAD
-          cp appimgify.spec ~/rpmbuild/SPECS/
+          sed "s/@VERSION@/${version}/g" packaging/appimgify.spec.in \
+            > ~/rpmbuild/SPECS/appimgify.spec
+          cp "sources/appimgify-${version}.tar.gz" ~/rpmbuild/SOURCES/
+          ls -l ~/rpmbuild/SOURCES/ ~/rpmbuild/SPECS/
 
       - name: Build the package
         env:
@@ -209,20 +217,23 @@ jobs:
       - name: Install build dependencies
         run: |
           pacman -Syu --noconfirm --needed \
-            git meson ninja python python-gobject gtk4 libadwaita \
+            meson ninja python python-gobject gtk4 libadwaita \
             desktop-file-utils appstream xorg-server-xvfb squashfs-tools
 
       - uses: actions/checkout@v7
 
+      - name: Download the source tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: source-tarball
+          path: sources
+
       - name: Prepare the PKGBUILD
         run: |
           version="${{ needs.version.outputs.version }}"
-          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           mkdir -p build-arch
           sed "s/@VERSION@/${version}/g" packaging/PKGBUILD.in > build-arch/PKGBUILD
-          git archive --format=tar.gz \
-            --prefix="appimgify-${version}/" \
-            -o "build-arch/appimgify-${version}.tar.gz" HEAD
+          cp "sources/appimgify-${version}.tar.gz" build-arch/
           # makepkg refuses to run as root, so the build runs as a normal user.
           useradd -m builder
           chown -R builder:builder build-arch
@@ -234,7 +245,7 @@ jobs:
         run: |
           cd build-arch
           sudo -u builder --preserve-env=DBUS_SESSION_BUS_ADDRESS \
-            makepkg --noconfirm --nodeps --syncdeps=false
+            makepkg --noconfirm --nodeps
 
       - name: Verify and install the package
         run: |
