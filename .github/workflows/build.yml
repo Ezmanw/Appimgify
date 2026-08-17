@@ -107,12 +107,13 @@ jobs:
             echo "::error::appimgify exited early (status ${exit_code})"
             exit 1
           fi
-          # Running without a session bus makes GTK and dconf complain about
-          # the bus itself. That noise is expected here; anything else on
-          # stderr is a real problem in the application.
+          # A headless runner has no session bus and no GPU, so GTK, dconf and
+          # Mesa all complain about the environment. That noise is expected
+          # here; anything else on stderr is a real problem in the application.
           grep -v -e 'Unable to acquire session bus' \
                   -e 'Error creating proxy' \
                   -e 'failed to commit changes to dconf' \
+                  -e 'libEGL warning' \
                   -e '^[[:space:]]*$' launch.log > unexpected.log || true
           if [ -s unexpected.log ]; then
             echo "::error::appimgify produced unexpected warnings on startup"
