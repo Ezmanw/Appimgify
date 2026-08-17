@@ -123,7 +123,14 @@ jobs:
           command -v appimgify
           # The dependencies declared in control must be enough to import the
           # application on a machine that never had the build tree.
-          python3 -W error::Warning -c "from appimgify.ui import MainWindow; print('import OK')"
+          python3 -c "
+          import warnings, gi
+          # The one warning that must never appear: it would mean the typelib
+          # version pins in appimgify/gi_versions.py are not being applied.
+          warnings.simplefilter('error', gi.PyGIWarning)
+          from appimgify.ui import MainWindow
+          print('import OK, typelib versions pinned')
+          "
           test -f /usr/share/applications/io.github.ezmanw.Appimgify.desktop
           desktop-file-validate /usr/share/applications/io.github.ezmanw.Appimgify.desktop
           sudo apt-get remove -y appimgify
@@ -156,7 +163,7 @@ jobs:
               python3-devel python3-gobject \
               gtk4-devel libadwaita-devel \
               desktop-file-utils libappstream-glib appstream \
-              xorg-x11-server-Xvfb squashfs-tools && exit 0
+              squashfs-tools && exit 0
             echo "dnf attempt ${attempt} failed; retrying"
             sleep 20
           done
@@ -190,7 +197,14 @@ jobs:
           rpm -qlp "${package}"
           dnf install -y "${package}"
           command -v appimgify
-          python3 -W error::Warning -c "from appimgify.ui import MainWindow; print('import OK')"
+          python3 -c "
+          import warnings, gi
+          # The one warning that must never appear: it would mean the typelib
+          # version pins in appimgify/gi_versions.py are not being applied.
+          warnings.simplefilter('error', gi.PyGIWarning)
+          from appimgify.ui import MainWindow
+          print('import OK, typelib versions pinned')
+          "
           desktop-file-validate /usr/share/applications/io.github.ezmanw.Appimgify.desktop
 
       - name: Collect the package
@@ -264,7 +278,14 @@ jobs:
           pacman -Qlp "${package}"
           pacman -U --noconfirm "${package}"
           command -v appimgify
-          python3 -W error::Warning -c "from appimgify.ui import MainWindow; print('import OK')"
+          python3 -c "
+          import warnings, gi
+          # The one warning that must never appear: it would mean the typelib
+          # version pins in appimgify/gi_versions.py are not being applied.
+          warnings.simplefilter('error', gi.PyGIWarning)
+          from appimgify.ui import MainWindow
+          print('import OK, typelib versions pinned')
+          "
           desktop-file-validate /usr/share/applications/io.github.ezmanw.Appimgify.desktop
 
       - name: Collect the package

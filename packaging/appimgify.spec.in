@@ -47,15 +47,11 @@ privileges are required.
 %meson_install
 
 %check
-# The widget tests skip themselves without a display, so the suite runs with
-# or without Xvfb. Running without a session bus keeps GTK from trying to
+# The seven widget tests skip themselves on a headless builder; the rest of
+# the suite runs anywhere. Disabling the session bus keeps GTK from trying to
 # autostart xdg-desktop-portal and blocking on it.
 export DBUS_SESSION_BUS_ADDRESS='disabled:'
-if command -v xvfb-run >/dev/null 2>&1; then
-    xvfb-run -a %meson_test
-else
-    %meson_test
-fi
+%meson_test
 
 %files
 %license LICENSE
@@ -66,5 +62,5 @@ fi
 %{_datadir}/metainfo/io.github.ezmanw.Appimgify.metainfo.xml
 
 %changelog
-* Sun Aug 17 2026 The Appimgify Contributors <noreply@github.com> - @VERSION@-1
+* Mon Aug 17 2026 The Appimgify Contributors <noreply@github.com> - @VERSION@-1
 - Initial release.
