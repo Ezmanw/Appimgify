@@ -1,0 +1,330 @@
+name: Package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------------
+  # The version is decided once, here, so every package agrees on it.
+  # A tagged build takes the version from the tag; anything else takes it
+  # from meson.build, which is the single source of truth in the tree.
+  # ------------------------------------------------------------------
+  version:
+    name: Resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      is_release: ${{ steps.resolve.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve the package version
+        id: resolve
+        run: |
+          project_version="$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -1)"
+          if [ -z "${project_version}" ]; then
+            echo "::error::could not read the version out of meson.build"
+            exit 1
+          fi
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [ "${tag_version}" != "${project_version}" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match meson.build version ${project_version}"
+              exit 1
+            fi
+            echo "version=${tag_version}" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${project_version}" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Resolved version: ${project_version}"
+
+      - name: Create the source tarball
+        run: |
+          version="${{ steps.resolve.outputs.version }}"
+          git archive --format=tar.gz \
+            --prefix="appimgify-${version}/" \
+            -o "appimgify-${version}.tar.gz" HEAD
+          sha256sum "appimgify-${version}.tar.gz"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: source-tarball
+          path: appimgify-*.tar.gz
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # Debian / Ubuntu / Pop!_OS
+  # ------------------------------------------------------------------
+  deb:
+    name: Build .deb
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            meson ninja-build python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
+            libgtk-4-dev libadwaita-1-dev desktop-file-utils appstream \
+            dpkg-dev fakeroot lintian
+
+      - name: Build the package
+        run: packaging/build-deb.sh "${{ needs.version.outputs.version }}" dist
+
+      # A .deb that installs into the wrong path or ships bytecode is still a
+      # .deb, so the artifact is checked rather than just built.
+      - name: Verify the package contents
+        run: |
+          package="dist/appimgify_${{ needs.version.outputs.version }}_all.deb"
+          contents="$(dpkg-deb --contents "${package}")"
+
+          if echo "${contents}" | grep -q '\.pyc'; then
+            echo "::error::the package ships compiled bytecode"
+            exit 1
+          fi
+          for expected in \
+            ./usr/bin/appimgify \
+            ./usr/lib/python3/dist-packages/appimgify/__init__.py \
+            ./usr/share/applications/io.github.ezmanw.Appimgify.desktop \
+            ./usr/share/metainfo/io.github.ezmanw.Appimgify.metainfo.xml
+          do
+            echo "${contents}" | grep -q " ${expected}$" \
+              || { echo "::error::missing ${expected}"; exit 1; }
+          done
+          echo "Package contents look right."
+
+      - name: Lint the package
+        run: |
+          # Informational: lintian is strict about things that do not apply to
+          # a package built outside the Debian archive.
+          lintian --no-tag-display-limit \
+            "dist/appimgify_${{ needs.version.outputs.version }}_all.deb" || true
+
+      - name: Install the package and check it runs
+        run: |
+          sudo apt-get install -y "./dist/appimgify_${{ needs.version.outputs.version }}_all.deb"
+          command -v appimgify
+          # The dependencies declared in control must be enough to import the
+          # application on a machine that never had the build tree.
+          python3 -W error::Warning -c "from appimgify.ui import MainWindow; print('import OK')"
+          test -f /usr/share/applications/io.github.ezmanw.Appimgify.desktop
+          desktop-file-validate /usr/share/applications/io.github.ezmanw.Appimgify.desktop
+          sudo apt-get remove -y appimgify
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb-package
+          path: dist/*.deb
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # Fedora / RHEL
+  # ------------------------------------------------------------------
+  rpm:
+    name: Build .rpm
+    needs: version
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:41
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          dnf install -y \
+            rpm-build rpmdevtools meson ninja-build git \
+            python3-devel python3-gobject \
+            gtk4-devel libadwaita-devel \
+            desktop-file-utils libappstream-glib appstream \
+            xorg-x11-server-Xvfb squashfs-tools
+
+      - name: Prepare the spec and sources
+        run: |
+          version="${{ needs.version.outputs.version }}"
+          rpmdev-setuptree
+          sed "s/@VERSION@/${version}/g" packaging/appimgify.spec.in > appimgify.spec
+          # git refuses to archive a tree it considers owned by someone else.
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git archive --format=tar.gz \
+            --prefix="appimgify-${version}/" \
+            -o ~/rpmbuild/SOURCES/"appimgify-${version}.tar.gz" HEAD
+          cp appimgify.spec ~/rpmbuild/SPECS/
+
+      - name: Build the package
+        env:
+          DBUS_SESSION_BUS_ADDRESS: 'disabled:'
+        run: xvfb-run -a rpmbuild -ba ~/rpmbuild/SPECS/appimgify.spec
+
+      - name: Verify and install the package
+        run: |
+          package="$(find ~/rpmbuild/RPMS -name 'appimgify-*.noarch.rpm' | head -1)"
+          echo "Built ${package}"
+          rpm -qip "${package}"
+          rpm -qlp "${package}"
+          dnf install -y "${package}"
+          command -v appimgify
+          python3 -W error::Warning -c "from appimgify.ui import MainWindow; print('import OK')"
+          desktop-file-validate /usr/share/applications/io.github.ezmanw.Appimgify.desktop
+
+      - name: Collect the package
+        run: |
+          mkdir -p dist
+          find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} dist/ \;
+          find ~/rpmbuild/SRPMS -name '*.rpm' -exec cp {} dist/ \;
+          ls -l dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rpm-package
+          path: dist/*.rpm
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # Arch Linux
+  # ------------------------------------------------------------------
+  arch:
+    name: Build Arch package
+    needs: version
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git meson ninja python python-gobject gtk4 libadwaita \
+            desktop-file-utils appstream xorg-server-xvfb squashfs-tools
+
+      - uses: actions/checkout@v7
+
+      - name: Prepare the PKGBUILD
+        run: |
+          version="${{ needs.version.outputs.version }}"
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          mkdir -p build-arch
+          sed "s/@VERSION@/${version}/g" packaging/PKGBUILD.in > build-arch/PKGBUILD
+          git archive --format=tar.gz \
+            --prefix="appimgify-${version}/" \
+            -o "build-arch/appimgify-${version}.tar.gz" HEAD
+          # makepkg refuses to run as root, so the build runs as a normal user.
+          useradd -m builder
+          chown -R builder:builder build-arch
+          cat build-arch/PKGBUILD
+
+      - name: Build the package
+        env:
+          DBUS_SESSION_BUS_ADDRESS: 'disabled:'
+        run: |
+          cd build-arch
+          sudo -u builder --preserve-env=DBUS_SESSION_BUS_ADDRESS \
+            makepkg --noconfirm --nodeps --syncdeps=false
+
+      - name: Verify and install the package
+        run: |
+          package="$(find build-arch -name 'appimgify-*.pkg.tar.*' | head -1)"
+          echo "Built ${package}"
+          pacman -Qip "${package}"
+          pacman -Qlp "${package}"
+          pacman -U --noconfirm "${package}"
+          command -v appimgify
+          python3 -W error::Warning -c "from appimgify.ui import MainWindow; print('import OK')"
+          desktop-file-validate /usr/share/applications/io.github.ezmanw.Appimgify.desktop
+
+      - name: Collect the package
+        run: |
+          mkdir -p dist
+          find build-arch -name 'appimgify-*.pkg.tar.*' -exec cp {} dist/ \;
+          ls -l dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arch-package
+          path: dist/appimgify-*.pkg.tar.*
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # Publishing, only ever from a version tag.
+  # ------------------------------------------------------------------
+  release:
+    name: Publish release
+    needs: [version, deb, rpm, arch]
+    if: needs.version.outputs.is_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download every package
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Gather the release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' -o -name '*.tar.gz' \) \
+            -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS
+          ls -l
+          cat SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ needs.version.outputs.version }}"
+          cat > notes.md <<EOF
+          Appimgify ${version}.
+
+          ## Install
+
+          **Debian, Ubuntu, Pop!_OS**
+          \`\`\`bash
+          sudo apt install ./appimgify_${version}_all.deb
+          \`\`\`
+
+          **Fedora**
+          \`\`\`bash
+          sudo dnf install ./appimgify-${version}-1.*.noarch.rpm
+          \`\`\`
+
+          **Arch Linux**
+          \`\`\`bash
+          sudo pacman -U ./appimgify-${version}-1-any.pkg.tar.zst
+          \`\`\`
+
+          Every package is architecture-independent and pulls its GTK 4 and
+          Libadwaita bindings from your distribution. \`squashfs-tools\` is
+          recommended: with it, Appimgify reads AppImage metadata without
+          running the bundle.
+
+          Verify a download against \`SHA256SUMS\`:
+          \`\`\`bash
+          sha256sum -c SHA256SUMS --ignore-missing
+          \`\`\`
+          EOF
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Appimgify ${version}" \
+            --notes-file notes.md \
+            release/*

@@ -1,0 +1,39 @@
+# Maintainer: The Appimgify Contributors <noreply@github.com>
+pkgname=appimgify
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Manage AppImages and their application menu launchers"
+arch=('any')
+url="https://github.com/Ezmanw/Appimgify"
+license=('GPL-3.0-or-later')
+depends=(
+  'python'
+  'python-gobject'
+  'gtk4'
+  'libadwaita'
+  'hicolor-icon-theme'
+)
+optdepends=(
+  'squashfs-tools: read AppImage metadata without running the bundle'
+  'desktop-file-utils: refresh the applications menu after changes'
+)
+makedepends=('meson' 'ninja')
+checkdepends=('desktop-file-utils' 'appstream' 'xorg-server-xvfb')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  arch-meson "$pkgname-$pkgver" build
+  meson compile -C build
+}
+
+check() {
+  # The widget tests need a display and complain without a session bus.
+  DBUS_SESSION_BUS_ADDRESS='disabled:' xvfb-run -a meson test -C build --print-errorlogs
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+  install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$pkgname-$pkgver/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

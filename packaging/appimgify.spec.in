@@ -1,0 +1,63 @@
+Name:           appimgify
+Version:        @VERSION@
+Release:        1%{?dist}
+Summary:        Manage AppImages and their application menu launchers
+
+License:        GPL-3.0-or-later
+URL:            https://github.com/Ezmanw/Appimgify
+Source0:        %{name}-%{version}.tar.gz
+
+BuildArch:      noarch
+
+BuildRequires:  meson >= 0.62
+BuildRequires:  ninja-build
+BuildRequires:  python3-devel
+BuildRequires:  pkgconfig(gtk4) >= 4.12
+BuildRequires:  pkgconfig(libadwaita-1) >= 1.5
+BuildRequires:  desktop-file-utils
+BuildRequires:  libappstream-glib
+
+Requires:       python3
+Requires:       python3-gobject >= 3.42
+Requires:       gtk4 >= 4.12
+Requires:       libadwaita >= 1.5
+
+# Lets metadata be read straight out of an AppImage's SquashFS payload
+# instead of running the bundle's own runtime to extract it.
+Recommends:     squashfs-tools
+
+%description
+Appimgify turns a downloaded AppImage into a properly integrated desktop
+application. It copies the file into a managed folder, makes it executable,
+reads the name, description and icon out of the bundle where it can, and
+writes a valid desktop entry so the application appears in the normal
+applications menu.
+
+Everything happens inside the user's home directory; no administrator
+privileges are required.
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+%meson
+%meson_build
+
+%install
+%meson_install
+
+%check
+# The widget tests need a display; the rest of the suite runs anywhere.
+%meson_test
+
+%files
+%license LICENSE
+%doc README.md
+%{_bindir}/appimgify
+%{python3_sitelib}/appimgify/
+%{_datadir}/applications/io.github.ezmanw.Appimgify.desktop
+%{_datadir}/metainfo/io.github.ezmanw.Appimgify.metainfo.xml
+
+%changelog
+* Sun Aug 17 2026 The Appimgify Contributors <noreply@github.com> - @VERSION@-1
+- Initial release.

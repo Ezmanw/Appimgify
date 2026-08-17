@@ -3,7 +3,13 @@ project(
   version: '1.0.0',
   license: 'GPL-3.0-or-later',
   meson_version: '>= 0.62.0',
-  default_options: ['warning_level=2'],
+  default_options: [
+    'warning_level=2',
+    # Never ship bytecode built here: a .pyc compiled against the build
+    # machine's interpreter is wrong for any other Python version. Each
+    # distribution's packaging tools byte-compile at the right moment.
+    'python.bytecompile=-1',
+  ],
 )
 
 application_id = 'io.github.ezmanw.Appimgify'

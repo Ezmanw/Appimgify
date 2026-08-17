@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -33,7 +34,7 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install build and runtime dependencies
         run: |
@@ -124,7 +125,7 @@ jobs:
 
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: meson-logs-${{ strategy.job-index }}
           path: build/meson-logs/
